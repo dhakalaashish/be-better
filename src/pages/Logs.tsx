@@ -36,7 +36,7 @@ const typeColors = {
 export default function Logs() {
   const { user } = useAuth();
   const [events, setEvents] = useState<Event[]>([]);
-  const [expandedType, setExpandedType] = useState<string | null>('good');
+  const [expandedTypes, setExpandedTypes] = useState<string[]>(['good']); // Changed to an array to allow multiple expanded types
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [logs, setLogs] = useState<Log[]>([]);
   const [loading, setLoading] = useState(true);
@@ -154,15 +154,21 @@ export default function Logs() {
     bad: events.filter(e => e.type === 'bad'),
   };
 
+  const toggleExpandedType = (type: string) => {
+    setExpandedTypes(prev => 
+      prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
+    );
+  };
+
   const renderEventGroup = (type: 'good' | 'neutral' | 'bad', title: string) => {
-    const isExpanded = expandedType === type;
+    const isExpanded = expandedTypes.includes(type); // Check if type is in the array
     const typeEvents = groupedEvents[type];
 
     return (
       <Card className="mb-4 shadow-md">
         <CardHeader 
           className="cursor-pointer hover:bg-secondary/50 transition-colors"
-          onClick={() => setExpandedType(isExpanded ? null : type)}
+          onClick={() => toggleExpandedType(type)} // Use toggle function
         >
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg flex items-center gap-2">
