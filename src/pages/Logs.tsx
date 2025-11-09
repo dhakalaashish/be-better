@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ChevronDown, ChevronUp, Clock } from 'lucide-react';
+import { ChevronDown, ChevronUp, Clock, Plus, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 interface Event {
   id: string;
@@ -17,10 +19,10 @@ interface Event {
 
 interface Log {
   id: string;
-  start_date: string;
-  duration: number;
-  intensity: number;
-  sub_category: string;
+  created_at: string;
+  duration: number | null;
+  intensity: number | null;
+  sub_category: string | null;
 }
 
 const typeColors = {
@@ -36,6 +38,12 @@ export default function Logs() {
   const [selectedEvent, setSelectedEvent] = useState<string | null>(null);
   const [logs, setLogs] = useState<Log[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showAddLogForm, setShowAddLogForm] = useState(false);
+  const [newLogData, setNewLogData] = useState({
+    duration: '',
+    intensity: '',
+    sub_category: '',
+  });
 
   useEffect(() => {
     if (user) {
@@ -66,13 +74,46 @@ export default function Logs() {
         .from('logs')
         .select('*')
         .eq('event_id', eventId)
-        .order('start_date', { ascending: false });
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
       setLogs(data || []);
       setSelectedEvent(eventId);
     } catch (error: any) {
       toast.error('Failed to load logs');
+    }
+  };
+
+  const handleAddLog = async () => {
+    if (!selectedEvent) return;
+
+    const duration = newLogData.duration ? parseInt(newLogData.duration) : null;
+    const intensity = newLogData.intensity ? parseInt(newLogData.intensity) : null;
+
+    if (duration !== null && (isNaN(duration) || duration < 0)) {
+      toast.error('Duration must be a non-negative number.');
+      return;
+    }
+    if (intensity !== null && (isNaN(intensity) || intensity < 1 || intensity > 5)) {
+      toast.error('Intensity must be a number between 1 and 5.');
+      return;
+    }
+
+    try {
+      const { error } = await supabase.from('logs').insert({
+        event_id: selectedEvent,
+        duration: duration,
+        intensity: intensity,
+        sub_category: newLogData.sub_category || null,
+      });
+
+      if (error) throw error;
+      toast.success('Log added successfully!');
+      setNewLogData({ duration: '', intensity: '', sub_category: '' });
+      setShowAddLogForm(false);
+      fetchEventLogs(selectedEvent); // Refresh logs for the selected event
+    } catch (error: any) {
+      toast.error('Failed to add log');
     }
   };
 
@@ -157,30 +198,91 @@ export default function Logs() {
       {selectedEvent && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <Card className="w-full max-w-md max-h-[80vh] overflow-auto">
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Event History</CardTitle>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={() => setSelectedEvent(null)}
+              >
+                <X className="w-4 h-4" />
+              </Button>
             </CardHeader>
             <CardContent>
+              <div className="mb-4">
+                <Button 
+                  className="w-full" 
+                  onClick={() => setShowAddLogForm(!showAddLogForm)}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  {showAddLogForm ? 'Cancel Add Log' : 'Add New Log'}
+                </Button>
+              </div>
+
+              {showAddLogForm && (
+                <div className="space-y-3 border-b pb-4 mb-4">
+                  <div>
+                    <Label htmlFor="duration">Duration (minutes, optional)</Label>
+                    <Input
+                      id="duration"
+                      type="number"
+                      value={newLogData.duration}
+                      onChange={(e) => setNewLogData({ ...newLogData, duration: e.target.value })}
+                      placeholder="e.g., 30"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="intensity">Intensity (1-5, optional)</Label>
+                    <Input
+                      id="intensity"
+                      type="number"
+                      min="1"
+                      max="5"
+                      value={newLogData.intensity}
+                      onChange={(e) => setNewLogData({ ...newLogData, intensity: e.target.value })}
+                      placeholder="e.g., 4"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="sub_category">Sub-category (optional)</Label>
+                    <Input
+                      id="sub_category"
+                      value={newLogData.sub_category}
+                      onChange={(e) => setNewLogData({ ...newLogData, sub_category: e.target.value })}
+                      placeholder="e.g., Morning workout"
+                    />
+                  </div>
+                  <Button onClick={handleAddLog} className="w-full">
+                    Save Log
+                  </Button>
+                </div>
+              )}
+
               {logs.length === 0 ? (
                 <p className="text-muted-foreground text-center py-4">
-                  No logs yet
+                  No logs yet. Add one above!
                 </p>
               ) : (
                 <div className="space-y-3">
                   {logs.map(log => (
                     <Card key={log.id}>
                       <CardContent className="p-3">
-                        <p className="text-sm">
-                          {new Date(log.start_date).toLocaleString()}
+                        <p className="text-sm font-medium">
+                          {new Date(log.created_at).toLocaleString()}
                         </p>
-                        {log.duration && (
+                        {log.duration !== null && (
                           <p className="text-sm text-muted-foreground">
                             Duration: {log.duration} min
                           </p>
                         )}
-                        {log.intensity && (
+                        {log.intensity !== null && (
                           <p className="text-sm text-muted-foreground">
                             Intensity: {log.intensity}/5
+                          </p>
+                        )}
+                        {log.sub_category && (
+                          <p className="text-sm text-muted-foreground">
+                            Category: {log.sub_category}
                           </p>
                         )}
                       </CardContent>
@@ -188,13 +290,6 @@ export default function Logs() {
                   ))}
                 </div>
               )}
-              <Button
-                className="w-full mt-4"
-                variant="outline"
-                onClick={() => setSelectedEvent(null)}
-              >
-                Close
-              </Button>
             </CardContent>
           </Card>
         </div>
