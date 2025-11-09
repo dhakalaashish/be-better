@@ -8,8 +8,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
-import { LogOut, Plus, X, Edit, Save, XCircle } from 'lucide-react';
+import { LogOut, Plus, X, Edit, Save, XCircle, Trash2 } from 'lucide-react';
 import type { Tables } from '@/integrations/supabase/types';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 
 type Event = Tables<'events'>;
 
@@ -23,8 +24,8 @@ export default function UserProfile() {
   const { user } = useAuth();
   const [profile, setProfile] = useState({ name: '', goals: [] as string[] });
   const [newGoal, setNewGoal] = useState('');
-  const [showEventForm, setShowEventForm] = useState(false);
-  const [eventForm, setEventForm] = useState({
+  const [showAddEventForm, setShowAddEventForm] = useState(false);
+  const [addEventForm, setAddEventForm] = useState({
     name: '',
     importance: 3,
     type: 'neutral' as 'good' | 'neutral' | 'bad',
@@ -34,6 +35,10 @@ export default function UserProfile() {
   const [editableName, setEditableName] = useState('');
   const [userEvents, setUserEvents] = useState<Event[]>([]);
   const [loadingEvents, setLoadingEvents] = useState(true);
+
+  // State for editing events
+  const [isEditingEvent, setIsEditingEvent] = useState(false);
+  const [editingEventData, setEditingEventData] = useState<Event | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -122,19 +127,19 @@ export default function UserProfile() {
     }
   };
 
-  const addEvent = async () => {
+  const handleAddEvent = async () => {
     try {
       const { error } = await supabase
         .from('events')
         .insert({
-          ...eventForm,
+          ...addEventForm,
           user_id: user?.id,
         });
 
       if (error) throw error;
       toast.success('Event created');
-      setShowEventForm(false);
-      setEventForm({ name: '', importance: 3, type: 'neutral', goal: 'N/A' });
+      setShowAddEventForm(false);
+      setAddEventForm({ name: '', importance: 3, type: 'neutral', goal: 'N/A' });
       fetchUserEvents(); // Refresh the list of events
     } catch (error: any) {
       toast.error('Failed to create event');
@@ -158,6 +163,51 @@ export default function UserProfile() {
       toast.success('Name updated successfully');
     } catch (error: any) {
       toast.error('Failed to update name');
+    }
+  };
+
+  const handleEditEvent = (event: Event) => {
+    setEditingEventData(event);
+    setIsEditingEvent(true);
+    setShowAddEventForm(false); // Hide add form when editing
+  };
+
+  const handleUpdateEvent = async () => {
+    if (!editingEventData) return;
+    try {
+      const { error } = await supabase
+        .from('events')
+        .update({
+          name: editingEventData.name,
+          importance: editingEventData.importance,
+          type: editingEventData.type,
+          goal: editingEventData.goal,
+        })
+        .eq('id', editingEventData.id);
+
+      if (error) throw error;
+      toast.success('Event updated');
+      setIsEditingEvent(false);
+      setEditingEventData(null);
+      fetchUserEvents(); // Refresh the list of events
+    } catch (error: any) {
+      toast.error('Failed to update event');
+    }
+  };
+
+  const handleDeleteEvent = async (eventId: string) => {
+    if (!confirm('Are you sure you want to delete this event?')) return;
+    try {
+      const { error } = await supabase
+        .from('events')
+        .delete()
+        .eq('id', eventId);
+
+      if (error) throw error;
+      toast.success('Event deleted');
+      fetchUserEvents(); // Refresh the list of events
+    } catch (error: any) {
+      toast.error('Failed to delete event');
     }
   };
 
@@ -244,43 +294,46 @@ export default function UserProfile() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>Events</CardTitle>
-            <Button size="sm" onClick={() => setShowEventForm(!showEventForm)}>
+            <Button size="sm" onClick={() => {
+              setShowAddEventForm(!showAddEventForm);
+              setIsEditingEvent(false); // Hide edit form when opening add form
+            }}>
               <Plus className="w-4 h-4 mr-2" />
               Add Event
             </Button>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          {showEventForm && (
+          {showAddEventForm && (
             <div className="space-y-4 border-b pb-4 mb-4">
               <div>
-                <Label htmlFor="name">Event Name</Label>
+                <Label htmlFor="add-name">Event Name</Label>
                 <Input
-                  id="name"
-                  value={eventForm.name}
-                  onChange={(e) => setEventForm({ ...eventForm, name: e.target.value })}
+                  id="add-name"
+                  value={addEventForm.name}
+                  onChange={(e) => setAddEventForm({ ...addEventForm, name: e.target.value })}
                 />
               </div>
               <div>
-                <Label htmlFor="importance">Importance (1-5)</Label>
+                <Label htmlFor="add-importance">Importance (1-5)</Label>
                 <Input
-                  id="importance"
+                  id="add-importance"
                   type="number"
                   min="1"
                   max="5"
-                  value={eventForm.importance}
-                  onChange={(e) => setEventForm({ ...eventForm, importance: parseInt(e.target.value) })}
+                  value={addEventForm.importance}
+                  onChange={(e) => setAddEventForm({ ...addEventForm, importance: parseInt(e.target.value) })}
                 />
               </div>
               <div>
-                <Label htmlFor="type">Type</Label>
+                <Label htmlFor="add-type">Type</Label>
                 <Select
-                  value={eventForm.type}
+                  value={addEventForm.type}
                   onValueChange={(value: 'good' | 'neutral' | 'bad') => 
-                    setEventForm({ ...eventForm, type: value })
+                    setAddEventForm({ ...addEventForm, type: value })
                   }
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="add-type">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -291,12 +344,12 @@ export default function UserProfile() {
                 </Select>
               </div>
               <div>
-                <Label htmlFor="goal">Goal</Label>
+                <Label htmlFor="add-goal">Goal</Label>
                 <Select
-                  value={eventForm.goal}
-                  onValueChange={(value) => setEventForm({ ...eventForm, goal: value })}
+                  value={addEventForm.goal}
+                  onValueChange={(value) => setAddEventForm({ ...addEventForm, goal: value })}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="add-goal">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -309,7 +362,7 @@ export default function UserProfile() {
                   </SelectContent>
                 </Select>
               </div>
-              <Button onClick={addEvent} className="w-full">
+              <Button onClick={handleAddEvent} className="w-full">
                 Create Event
               </Button>
             </div>
@@ -333,6 +386,14 @@ export default function UserProfile() {
                     {event.goal !== 'N/A' && (
                       <p className="text-sm text-muted-foreground">Goal: {event.goal}</p>
                     )}
+                    <div className="flex justify-end gap-2 mt-2">
+                      <Button variant="ghost" size="sm" onClick={() => handleEditEvent(event)}>
+                        <Edit className="w-4 h-4" />
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => handleDeleteEvent(event.id)}>
+                        <Trash2 className="w-4 h-4 text-destructive" />
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               ))}
@@ -340,6 +401,89 @@ export default function UserProfile() {
           )}
         </CardContent>
       </Card>
+
+      {/* Edit Event Dialog */}
+      <Dialog open={isEditingEvent} onOpenChange={setIsEditingEvent}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Edit Event</DialogTitle>
+          </DialogHeader>
+          {editingEventData && (
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-name" className="text-right">
+                  Name
+                </Label>
+                <Input
+                  id="edit-name"
+                  value={editingEventData.name}
+                  onChange={(e) => setEditingEventData({ ...editingEventData, name: e.target.value })}
+                  className="col-span-3"
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-importance" className="text-right">
+                  Importance
+                </Label>
+                <Input
+                  id="edit-importance"
+                  type="number"
+                  min="1"
+                  max="5"
+                  value={editingEventData.importance}
+                  onChange={(e) => setEditingEventData({ ...editingEventData, importance: parseInt(e.target.value) })}
+                  className="col-span-3"
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-type" className="text-right">
+                  Type
+                </Label>
+                <Select
+                  value={editingEventData.type}
+                  onValueChange={(value: 'good' | 'neutral' | 'bad') => 
+                    setEditingEventData({ ...editingEventData, type: value })
+                  }
+                >
+                  <SelectTrigger id="edit-type" className="col-span-3">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="good">Good</SelectItem>
+                    <SelectItem value="neutral">Neutral</SelectItem>
+                    <SelectItem value="bad">Bad</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-goal" className="text-right">
+                  Goal
+                </Label>
+                <Select
+                  value={editingEventData.goal}
+                  onValueChange={(value) => setEditingEventData({ ...editingEventData, goal: value })}
+                >
+                  <SelectTrigger id="edit-goal" className="col-span-3">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="N/A">N/A</SelectItem>
+                    {profile.goals.map((goal, index) => (
+                      <SelectItem key={index} value={goal}>
+                        {goal}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditingEvent(false)}>Cancel</Button>
+            <Button onClick={handleUpdateEvent}>Save changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
