@@ -1,12 +1,19 @@
 import { useState, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Mic, Square, Send, RotateCcw, Leaf } from 'lucide-react';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
+const ACCESS_KEY = import.meta.env.VITE_ACCESS_KEY
 
 export default function Home() {
+  // ✅ 1. Fetch events directly from Supabase
+  const { user } = useAuth();
+  const navigate = useNavigate()
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [transcription, setTranscription] = useState('');
@@ -73,6 +80,9 @@ export default function Home() {
 
       const response = await fetch(`${BACKEND_URL}/process_audio`, {
         method: 'POST',
+        headers: {
+          "X-Access-Key": ACCESS_KEY,
+        },
         body: formData,
       });
 
@@ -101,15 +111,144 @@ export default function Home() {
   const handleApprove = async () => {
     setIsProcessing(true);
     try {
-      // TODO: Call analyze edge function with transcription
-      setTimeout(() => {
-        toast.success('Log created successfully!');
-        setTranscription('');
-        setShowActions(false);
+      if (!transcription) {
+        toast.error('No transcription available.');
         setIsProcessing(false);
-      }, 1500);
-    } catch (error) {
-      toast.error('Failed to create log');
+        return;
+      }
+
+      if (!user) {
+        toast.error('User not logged in.');
+        setIsProcessing(false);
+        return;
+      }
+
+      // fetch user's events
+      const { data: userEvents, error: eventsError } = await supabase
+        .from('events')
+        .select('*')
+        .eq('user_id', user.id);
+
+      if (eventsError) throw eventsError;
+
+      // 2️⃣ Fetch user's goals from profiles
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('goals')
+        .eq('id', user.id)
+        .single();
+
+      if (profileError) throw profileError;
+
+      const userGoals = profile?.goals || [];
+
+      // ✅ 2. Send transcription + existing events to backend
+      const response = await fetch(`${BACKEND_URL}/process_content`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Access-Key": ACCESS_KEY,
+        },
+        body: JSON.stringify({
+          transcribed_content: transcription,
+          existing_events: userEvents || [],
+          user: {
+            id: user.id,
+            name: user.user_metadata?.name || null,
+            goals: userGoals
+          }
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to process content");
+      }
+
+      const data = await response.json();
+      console.log("Process Content Response:", data);
+
+      const { suggested_goals, suggested_events, suggested_logs } = data;
+
+      // 🧩 Step 4: Check if Gemini returned anything meaningful
+      const hasNewData =
+        (suggested_goals && suggested_goals.length > 0) ||
+        (suggested_events && suggested_events.length > 0) ||
+        (suggested_logs && suggested_logs.length > 0);
+
+      if (!hasNewData) {
+        toast.info("You need to talk about your day, please!");
+        setIsProcessing(false);
+        return;
+      }
+
+      // 🧭 Step 5: Create new goals
+      if (suggested_goals && suggested_goals.length > 0) {
+        const newGoalTexts = suggested_goals.map((g: any) => g.goal);
+        const updatedGoals = [...userGoals, ...newGoalTexts];
+
+        const { error: updateGoalError } = await supabase
+          .from("profiles")
+          .update({ goals: updatedGoals })
+          .eq("id", user.id);
+
+        if (updateGoalError) throw updateGoalError;
+      }
+
+      // 🧱 Step 6: Create new events
+      let createdEvents: Record<string, string> = {}; // map name → id
+      if (suggested_events && suggested_events.length > 0) {
+        for (const ev of suggested_events) {
+          const { data: inserted, error: insertError } = await supabase
+            .from("events")
+            .insert({
+              name: ev.name,
+              importance: ev.importance,
+              type: ev.type,
+              goal: ev.goal,
+              user_id: user.id,
+            })
+            .select("id, name")
+            .single();
+
+          if (insertError) throw insertError;
+          if (inserted) createdEvents[inserted.name] = inserted.id;
+        }
+      }
+
+      // 🧾 Step 7: Create logs
+      if (suggested_logs && suggested_logs.length > 0) {
+        for (const log of suggested_logs) {
+          const eventId =
+            log.event_id ||
+            createdEvents[log.event_name] ||
+            null;
+
+          if (!eventId) continue; // skip if no valid event reference
+
+          const { error: logError } = await supabase.from("logs").insert({
+            event_id: eventId,
+            sub_category: log.sub_category,
+            duration: log.duration || null,
+          });
+
+          if (logError) throw logError;
+        }
+      }
+
+      // ✅ Step 8: Done — reset and navigate
+      toast.success("Your reflection has been logged successfully!");
+      setTranscription("");
+      setShowActions(false);
+
+      // Wait a short moment before navigating
+      setTimeout(() => {
+        navigate("/user");
+      }, 1000);
+    } catch (error: any) {
+      console.error("Process content error:", error);
+      toast.error(error.message || "Failed to create log");
+    } finally {
       setIsProcessing(false);
     }
   };

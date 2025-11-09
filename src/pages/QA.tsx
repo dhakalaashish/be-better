@@ -4,13 +4,19 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Send } from 'lucide-react';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Message {
   role: 'user' | 'assistant';
   content: string;
 }
 
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
+const ACCESS_KEY = import.meta.env.VITE_ACCESS_KEY;
+
 export default function QA() {
+  const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'assistant',
@@ -38,18 +44,66 @@ export default function QA() {
     setIsLoading(true);
 
     try {
-      // TODO: Call QA edge function
-      // For now, simulate response
-      setTimeout(() => {
-        const assistantMessage: Message = {
-          role: 'assistant',
-          content: "I'm analyzing your habits and patterns. This feature will be fully connected to your event logs soon!",
-        };
-        setMessages(prev => [...prev, assistantMessage]);
-        setIsLoading(false);
-      }, 1000);
+      // 1️⃣ Fetch user's events
+      const { data: userEvents, error: eventsError } = await supabase
+        .from('events')
+        .select('*')
+        .eq('user_id', user.id);
+      if (eventsError) throw eventsError;
+
+      // 2️⃣ Fetch user's logs
+      const { data: userLogs, error: logsError } = await supabase
+        .from('logs')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (logsError) throw logsError;
+
+      // 3️⃣ Fetch user goals
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('goals')
+        .eq('id', user.id)
+        .single();
+      if (profileError) throw profileError;
+
+      const userGoals = profile?.goals || [];
+
+      // 4️⃣ Send to backend with full chat context
+      const response = await fetch(`${BACKEND_URL}/qa_chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Access-Key': ACCESS_KEY,
+        },
+        body: JSON.stringify({
+          user: {
+            id: user.id,
+            name: user.user_metadata?.name || 'User',
+            goals: userGoals,
+          },
+          events: userEvents || [],
+          logs: userLogs || [],
+          conversation_history: messages.concat(userMessage),
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to fetch assistant response');
+      }
+
+      const data = await response.json();
+      const assistantReply: Message = {
+        role: 'assistant',
+        content: data.response || "I'm thinking about your progress...",
+      };
+
+      // 5️⃣ Append assistant response to chat
+      setMessages(prev => [...prev, assistantReply]);
     } catch (error) {
       toast.error('Failed to get response');
+      setIsLoading(false);
+    } finally {
       setIsLoading(false);
     }
   };
