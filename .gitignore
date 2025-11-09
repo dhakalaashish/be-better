@@ -23,4 +23,9 @@ dist-ssr
 *.sln
 *.sw?
 
-.env
+# Environments 
+.env 
+env/ 
+ENV/ 
+env.bak/ 
+venv.bak/ 
