@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
-import { LogOut, Plus, X, Edit } from 'lucide-react';
+import { LogOut, Plus, X, Edit, Save, XCircle } from 'lucide-react';
 
 export default function UserProfile() {
   const { user } = useAuth();
@@ -22,11 +22,20 @@ export default function UserProfile() {
     goal: 'N/A',
   });
 
+  // New states for name editing
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editableName, setEditableName] = useState('');
+
   useEffect(() => {
     if (user) {
       fetchProfile();
     }
   }, [user]);
+
+  // Update editableName when profile.name changes
+  useEffect(() => {
+    setEditableName(profile.name);
+  }, [profile.name]);
 
   const fetchProfile = async () => {
     try {
@@ -39,6 +48,7 @@ export default function UserProfile() {
       if (error) throw error;
       if (data) {
         setProfile({ name: data.name, goals: data.goals || [] });
+        setEditableName(data.name); // Set editableName here as well
       }
     } catch (error: any) {
       toast.error('Failed to load profile');
@@ -103,6 +113,27 @@ export default function UserProfile() {
     }
   };
 
+  // New function to update user name
+  const handleUpdateName = async () => {
+    if (!editableName.trim()) {
+      toast.error('Name cannot be empty');
+      return;
+    }
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ name: editableName })
+        .eq('id', user?.id);
+
+      if (error) throw error;
+      setProfile({ ...profile, name: editableName });
+      setIsEditingName(false);
+      toast.success('Name updated successfully');
+    } catch (error: any) {
+      toast.error('Failed to update name');
+    }
+  };
+
   return (
     <div className="pb-20 pt-8 px-4 max-w-lg mx-auto">
       <div className="flex items-center justify-between mb-6">
@@ -118,7 +149,31 @@ export default function UserProfile() {
           <CardTitle>Personal Info</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-lg font-semibold">{profile.name}</p>
+          {isEditingName ? (
+            <div className="flex items-center gap-2">
+              <Input
+                value={editableName}
+                onChange={(e) => setEditableName(e.target.value)}
+                className="flex-1"
+              />
+              <Button size="icon" variant="ghost" onClick={handleUpdateName}>
+                <Save className="w-4 h-4" />
+              </Button>
+              <Button size="icon" variant="ghost" onClick={() => {
+                setIsEditingName(false);
+                setEditableName(profile.name); // Revert to original name
+              }}>
+                <XCircle className="w-4 h-4" />
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              <p className="text-lg font-semibold">{profile.name}</p>
+              <Button variant="ghost" size="sm" onClick={() => setIsEditingName(true)}>
+                <Edit className="w-4 h-4" />
+              </Button>
+            </div>
+          )}
           <p className="text-sm text-muted-foreground">{user?.email}</p>
         </CardContent>
       </Card>
