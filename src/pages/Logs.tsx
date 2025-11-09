@@ -15,6 +15,7 @@ interface Event {
   importance: number;
   type: 'good' | 'neutral' | 'bad';
   goal: string;
+  logCount?: number; // Added to store the count of associated logs
 }
 
 interface Log {
@@ -23,6 +24,7 @@ interface Log {
   duration: number | null;
   intensity: number | null;
   sub_category: string | null;
+  event_id: string; // Added for log counting
 }
 
 const typeColors = {
@@ -35,7 +37,7 @@ export default function Logs() {
   const { user } = useAuth();
   const [events, setEvents] = useState<Event[]>([]);
   const [expandedType, setExpandedType] = useState<string | null>('good');
-  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null); // Changed to store full Event object
+  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [logs, setLogs] = useState<Log[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddLogForm, setShowAddLogForm] = useState(false);
@@ -52,23 +54,51 @@ export default function Logs() {
   }, [user]);
 
   const fetchEvents = async () => {
+    setLoading(true);
     try {
-      const { data, error } = await supabase
+      // Fetch all events for the user
+      const { data: eventsData, error: eventsError } = await supabase
         .from('events')
         .select('*')
         .eq('user_id', user?.id)
         .order('add_date', { ascending: false });
 
-      if (error) throw error;
-      setEvents((data as Event[]) || []);
+      if (eventsError) throw eventsError;
+
+      // Fetch all logs for the user's events to determine counts
+      const eventIds = eventsData.map(event => event.id);
+      
+      let logsData: Pick<Log, 'event_id'>[] = [];
+      if (eventIds.length > 0) {
+        const { data: fetchedLogs, error: logsError } = await supabase
+          .from('logs')
+          .select('event_id') // Only need event_id to count
+          .in('event_id', eventIds);
+
+        if (logsError) throw logsError;
+        logsData = fetchedLogs;
+      }
+
+      const eventLogCounts: { [key: string]: number } = logsData.reduce((acc, log) => {
+        acc[log.event_id] = (acc[log.event_id] || 0) + 1;
+        return acc;
+      }, {});
+
+      const eventsWithLogCounts = eventsData.map(event => ({
+        ...event,
+        logCount: eventLogCounts[event.id] || 0
+      }));
+
+      setEvents(eventsWithLogCounts);
     } catch (error: any) {
-      toast.error('Failed to load events');
+      toast.error('Failed to load events and their log counts');
+      console.error('Error fetching events with log counts:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchEventLogs = async (event: Event) => { // Accepts full Event object
+  const fetchEventLogs = async (event: Event) => {
     try {
       const { data, error } = await supabase
         .from('logs')
@@ -78,7 +108,7 @@ export default function Logs() {
 
       if (error) throw error;
       setLogs(data || []);
-      setSelectedEvent(event); // Store the full event object
+      setSelectedEvent(event);
     } catch (error: any) {
       toast.error('Failed to load logs');
     }
@@ -112,6 +142,7 @@ export default function Logs() {
       setNewLogData({ duration: '', intensity: '', sub_category: '' });
       setShowAddLogForm(false);
       fetchEventLogs(selectedEvent); // Refresh logs for the selected event
+      fetchEvents(); // Also refresh event list to update logCount
     } catch (error: any) {
       toast.error('Failed to add log');
     }
@@ -160,15 +191,19 @@ export default function Logs() {
                     {event.goal !== 'N/A' && (
                       <p className="text-sm mb-2">Goal: {event.goal}</p>
                     )}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => fetchEventLogs(event)} // Pass full event object
-                      className="mt-2"
-                    >
-                      <Clock className="w-4 h-4 mr-2" />
-                      View History
-                    </Button>
+                    {event.logCount && event.logCount > 0 ? ( // Conditionally render based on logCount
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => fetchEventLogs(event)}
+                        className="mt-2"
+                      >
+                        <Clock className="w-4 h-4 mr-2" />
+                        View History ({event.logCount})
+                      </Button>
+                    ) : (
+                      <p className="text-sm text-muted-foreground mt-2">No logs yet.</p>
+                    )}
                   </CardContent>
                 </Card>
               ))
@@ -199,7 +234,7 @@ export default function Logs() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <Card className="w-full max-w-md max-h-[80vh] overflow-auto">
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>{selectedEvent.name} History</CardTitle> {/* Dynamic title */}
+              <CardTitle>{selectedEvent.name} History</CardTitle>
               <Button 
                 variant="ghost" 
                 size="icon" 
@@ -213,16 +248,16 @@ export default function Logs() {
                 <Button 
                   className="w-full" 
                   onClick={() => setShowAddLogForm(!showAddLogForm)}
-                  variant={showAddLogForm ? 'destructive' : 'default'} // Reddish color
+                  variant={showAddLogForm ? 'destructive' : 'default'}
                 >
                   {showAddLogForm ? (
                     <>
-                      <X className="w-4 h-4 mr-2" /> {/* X icon */}
+                      <X className="w-4 h-4 mr-2" />
                       Cancel Add Log
                     </>
                   ) : (
                     <>
-                      <Plus className="w-4 h-4 mr-2" /> {/* Plus icon */}
+                      <Plus className="w-4 h-4 mr-2" />
                       Add New Log
                     </>
                   )}
