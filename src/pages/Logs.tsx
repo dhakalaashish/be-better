@@ -35,7 +35,7 @@ export default function Logs() {
   const { user } = useAuth();
   const [events, setEvents] = useState<Event[]>([]);
   const [expandedType, setExpandedType] = useState<string | null>('good');
-  const [selectedEvent, setSelectedEvent] = useState<string | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null); // Changed to store full Event object
   const [logs, setLogs] = useState<Log[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddLogForm, setShowAddLogForm] = useState(false);
@@ -68,17 +68,17 @@ export default function Logs() {
     }
   };
 
-  const fetchEventLogs = async (eventId: string) => {
+  const fetchEventLogs = async (event: Event) => { // Accepts full Event object
     try {
       const { data, error } = await supabase
         .from('logs')
         .select('*')
-        .eq('event_id', eventId)
+        .eq('event_id', event.id)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
       setLogs(data || []);
-      setSelectedEvent(eventId);
+      setSelectedEvent(event); // Store the full event object
     } catch (error: any) {
       toast.error('Failed to load logs');
     }
@@ -101,7 +101,7 @@ export default function Logs() {
 
     try {
       const { error } = await supabase.from('logs').insert({
-        event_id: selectedEvent,
+        event_id: selectedEvent.id,
         duration: duration,
         intensity: intensity,
         sub_category: newLogData.sub_category || null,
@@ -163,7 +163,7 @@ export default function Logs() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => fetchEventLogs(event.id)}
+                      onClick={() => fetchEventLogs(event)} // Pass full event object
                       className="mt-2"
                     >
                       <Clock className="w-4 h-4 mr-2" />
@@ -199,7 +199,7 @@ export default function Logs() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <Card className="w-full max-w-md max-h-[80vh] overflow-auto">
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Event History</CardTitle>
+              <CardTitle>{selectedEvent.name} History</CardTitle> {/* Dynamic title */}
               <Button 
                 variant="ghost" 
                 size="icon" 
@@ -213,9 +213,19 @@ export default function Logs() {
                 <Button 
                   className="w-full" 
                   onClick={() => setShowAddLogForm(!showAddLogForm)}
+                  variant={showAddLogForm ? 'destructive' : 'default'} // Reddish color
                 >
-                  <Plus className="w-4 h-4 mr-2" />
-                  {showAddLogForm ? 'Cancel Add Log' : 'Add New Log'}
+                  {showAddLogForm ? (
+                    <>
+                      <X className="w-4 h-4 mr-2" /> {/* X icon */}
+                      Cancel Add Log
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-4 h-4 mr-2" /> {/* Plus icon */}
+                      Add New Log
+                    </>
+                  )}
                 </Button>
               </div>
 
