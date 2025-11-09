@@ -9,6 +9,15 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { LogOut, Plus, X, Edit, Save, XCircle } from 'lucide-react';
+import type { Tables } from '@/integrations/supabase/types';
+
+type Event = Tables<'events'>;
+
+const typeColors = {
+  good: 'bg-success/10 text-success border-success/20',
+  neutral: 'bg-muted text-muted-foreground border-border',
+  bad: 'bg-destructive/10 text-destructive border-destructive/20',
+};
 
 export default function UserProfile() {
   const { user } = useAuth();
@@ -21,18 +30,18 @@ export default function UserProfile() {
     type: 'neutral' as 'good' | 'neutral' | 'bad',
     goal: 'N/A',
   });
-
-  // New states for name editing
   const [isEditingName, setIsEditingName] = useState(false);
   const [editableName, setEditableName] = useState('');
+  const [userEvents, setUserEvents] = useState<Event[]>([]);
+  const [loadingEvents, setLoadingEvents] = useState(true);
 
   useEffect(() => {
     if (user) {
       fetchProfile();
+      fetchUserEvents();
     }
   }, [user]);
 
-  // Update editableName when profile.name changes
   useEffect(() => {
     setEditableName(profile.name);
   }, [profile.name]);
@@ -48,10 +57,28 @@ export default function UserProfile() {
       if (error) throw error;
       if (data) {
         setProfile({ name: data.name, goals: data.goals || [] });
-        setEditableName(data.name); // Set editableName here as well
+        setEditableName(data.name);
       }
     } catch (error: any) {
       toast.error('Failed to load profile');
+    }
+  };
+
+  const fetchUserEvents = async () => {
+    setLoadingEvents(true);
+    try {
+      const { data, error } = await supabase
+        .from('events')
+        .select('*')
+        .eq('user_id', user?.id)
+        .order('add_date', { ascending: false });
+
+      if (error) throw error;
+      setUserEvents(data || []);
+    } catch (error: any) {
+      toast.error('Failed to load events');
+    } finally {
+      setLoadingEvents(false);
     }
   };
 
@@ -108,12 +135,12 @@ export default function UserProfile() {
       toast.success('Event created');
       setShowEventForm(false);
       setEventForm({ name: '', importance: 3, type: 'neutral', goal: 'N/A' });
+      fetchUserEvents(); // Refresh the list of events
     } catch (error: any) {
       toast.error('Failed to create event');
     }
   };
 
-  // New function to update user name
   const handleUpdateName = async () => {
     if (!editableName.trim()) {
       toast.error('Name cannot be empty');
@@ -161,7 +188,7 @@ export default function UserProfile() {
               </Button>
               <Button size="icon" variant="ghost" onClick={() => {
                 setIsEditingName(false);
-                setEditableName(profile.name); // Revert to original name
+                setEditableName(profile.name);
               }}>
                 <XCircle className="w-4 h-4" />
               </Button>
@@ -223,69 +250,95 @@ export default function UserProfile() {
             </Button>
           </div>
         </CardHeader>
-        {showEventForm && (
-          <CardContent className="space-y-4">
-            <div>
-              <Label htmlFor="name">Event Name</Label>
-              <Input
-                id="name"
-                value={eventForm.name}
-                onChange={(e) => setEventForm({ ...eventForm, name: e.target.value })}
-              />
+        <CardContent className="space-y-4">
+          {showEventForm && (
+            <div className="space-y-4 border-b pb-4 mb-4">
+              <div>
+                <Label htmlFor="name">Event Name</Label>
+                <Input
+                  id="name"
+                  value={eventForm.name}
+                  onChange={(e) => setEventForm({ ...eventForm, name: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="importance">Importance (1-5)</Label>
+                <Input
+                  id="importance"
+                  type="number"
+                  min="1"
+                  max="5"
+                  value={eventForm.importance}
+                  onChange={(e) => setEventForm({ ...eventForm, importance: parseInt(e.target.value) })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="type">Type</Label>
+                <Select
+                  value={eventForm.type}
+                  onValueChange={(value: 'good' | 'neutral' | 'bad') => 
+                    setEventForm({ ...eventForm, type: value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="good">Good</SelectItem>
+                    <SelectItem value="neutral">Neutral</SelectItem>
+                    <SelectItem value="bad">Bad</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="goal">Goal</Label>
+                <Select
+                  value={eventForm.goal}
+                  onValueChange={(value) => setEventForm({ ...eventForm, goal: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="N/A">N/A</SelectItem>
+                    {profile.goals.map((goal, index) => (
+                      <SelectItem key={index} value={goal}>
+                        {goal}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button onClick={addEvent} className="w-full">
+                Create Event
+              </Button>
             </div>
-            <div>
-              <Label htmlFor="importance">Importance (1-5)</Label>
-              <Input
-                id="importance"
-                type="number"
-                min="1"
-                max="5"
-                value={eventForm.importance}
-                onChange={(e) => setEventForm({ ...eventForm, importance: parseInt(e.target.value) })}
-              />
+          )}
+
+          {loadingEvents ? (
+            <p className="text-center text-muted-foreground">Loading events...</p>
+          ) : userEvents.length === 0 ? (
+            <p className="text-muted-foreground text-sm text-center">No events created yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {userEvents.map((event) => (
+                <Card key={event.id} className={typeColors[event.type]}>
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between mb-1">
+                      <h3 className="font-semibold">{event.name}</h3>
+                      <Badge variant="outline" className="ml-2">
+                        {event.importance}/5
+                      </Badge>
+                    </div>
+                    {event.goal !== 'N/A' && (
+                      <p className="text-sm text-muted-foreground">Goal: {event.goal}</p>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
             </div>
-            <div>
-              <Label htmlFor="type">Type</Label>
-              <Select
-                value={eventForm.type}
-                onValueChange={(value: 'good' | 'neutral' | 'bad') => 
-                  setEventForm({ ...eventForm, type: value })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="good">Good</SelectItem>
-                  <SelectItem value="neutral">Neutral</SelectItem>
-                  <SelectItem value="bad">Bad</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="goal">Goal</Label>
-              <Select
-                value={eventForm.goal}
-                onValueChange={(value) => setEventForm({ ...eventForm, goal: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="N/A">N/A</SelectItem>
-                  {profile.goals.map((goal, index) => (
-                    <SelectItem key={index} value={goal}>
-                      {goal}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <Button onClick={addEvent} className="w-full">
-              Create Event
-            </Button>
-          </CardContent>
-        )}
+          )}
+        </CardContent>
       </Card>
     </div>
   );
