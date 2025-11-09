@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Mic, Square, Send, RotateCcw } from 'lucide-react';
+import { Mic, Square, Send, RotateCcw, Leaf } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function Home() {
@@ -106,8 +106,23 @@ export default function Home() {
 
   return (
     <div className="pb-20 pt-8 px-4 max-w-lg mx-auto">
-      <h1 className="text-2xl font-bold mb-6 text-center">Voice Log</h1>
-      
+      <Card className="mb-6 shadow-md bg-gradient-to-br from-primary/10 to-background">
+        <CardContent className="p-6">
+          <h1 className="text-2xl font-bold mb-4 flex items-center gap-2 text-primary">
+            <Leaf className="w-6 h-6" /> Welcome to BeBetter
+          </h1>
+          <p className="text-muted-foreground mb-4">
+            BeBetter helps you reflect on your daily actions — the good, the bad, and the in-between — so you can understand your habits and grow intentionally over time.
+          </p>
+          <h2 className="text-lg font-semibold mb-2 flex items-center gap-2">
+            <Mic className="w-5 h-5 text-primary" /> What to Record
+          </h2>
+          <p className="text-muted-foreground text-sm">
+            Speak about what you did today: your routines, wins, distractions, or moments you’d like to improve. The app will listen, transcribe, and organize your reflections into meaningful patterns.
+          </p>
+        </CardContent>
+      </Card>
+
       <Card className="mb-6 shadow-md">
         <CardContent className="p-6 min-h-[200px] flex items-center justify-center">
           {transcription ? (
