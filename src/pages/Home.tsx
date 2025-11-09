@@ -4,6 +4,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Mic, Square, Send, RotateCcw, Leaf } from 'lucide-react';
 import { toast } from 'sonner';
 
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
+
 export default function Home() {
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -62,22 +64,30 @@ export default function Home() {
   const sendForTranscription = async (audioBlob: Blob) => {
     setIsProcessing(true);
     try {
-      // Convert blob to base64
-      const reader = new FileReader();
-      reader.readAsDataURL(audioBlob);
-      reader.onloadend = async () => {
-        const base64Audio = reader.result?.toString().split(',')[1];
-        
-        // TODO: Call transcription edge function
-        // For now, simulate transcription
-        setTimeout(() => {
-          setTranscription('Your transcribed text will appear here...');
-          setIsProcessing(false);
-          toast.success('Audio transcribed successfully');
-        }, 1500);
-      };
-    } catch (error) {
-      toast.error('Failed to transcribe audio');
+      if (!BACKEND_URL) {
+        throw new Error("Backend URL is not configured.");
+      }
+
+      const formData = new FormData();
+      formData.append('audio', audioBlob, 'audio.webm');
+
+      const response = await fetch(`${BACKEND_URL}/process_audio`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to transcribe audio');
+      }
+
+      const data = await response.json();
+      setTranscription(data.transcribed_content);
+      toast.success('Audio transcribed successfully');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to transcribe audio');
+      console.error('Transcription error:', error);
+    } finally {
       setIsProcessing(false);
     }
   };
@@ -105,8 +115,8 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center pb-20"> {/* Added flex, items-center, justify-center, and pb-20 for bottom nav */}
-      <div className="px-4 max-w-lg mx-auto w-full"> {/* Removed pt-8 */}
+    <div className="min-h-screen flex items-center justify-center pb-20">
+      <div className="px-4 max-w-lg mx-auto w-full">
         <Card className="mb-6 shadow-md bg-gradient-to-br from-primary/10 to-background">
           <CardContent className="p-6">
             <h1 className="text-2xl font-bold mb-4 flex items-center gap-2 text-primary">
