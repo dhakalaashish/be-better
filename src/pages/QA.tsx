@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Send } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -11,6 +12,7 @@ interface Message {
 }
 
 export default function QA() {
+  const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'assistant',
@@ -32,24 +34,33 @@ export default function QA() {
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
 
+    if (!user) {
+      toast.error('Please log in to use the Q&A assistant.');
+      return;
+    }
+
     const userMessage: Message = { role: 'user', content: input };
     setMessages(prev => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
 
     try {
-      // TODO: Call QA edge function
-      // For now, simulate response
-      setTimeout(() => {
-        const assistantMessage: Message = {
-          role: 'assistant',
-          content: "I'm analyzing your habits and patterns. This feature will be fully connected to your event logs soon!",
-        };
-        setMessages(prev => [...prev, assistantMessage]);
-        setIsLoading(false);
-      }, 1000);
+      const response = await fetch(
+        `http://127.0.0.1:5000/api/query?question=${encodeURIComponent(input)}&user_id=${user.id}`
+      );
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+      const data = await response.json();
+      const assistantMessage: Message = {
+        role: 'assistant',
+        content: data.answer,
+      };
+      setMessages(prev => [...prev, assistantMessage]);
     } catch (error) {
-      toast.error('Failed to get response');
+      console.error("Failed to fetch:", error);
+      toast.error('Failed to get response from the assistant.');
+    } finally {
       setIsLoading(false);
     }
   };
