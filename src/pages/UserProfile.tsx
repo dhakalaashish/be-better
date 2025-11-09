@@ -146,6 +146,11 @@ export default function UserProfile() {
     }
   };
 
+  const handleCancelAddEvent = () => {
+    setShowAddEventForm(false);
+    setAddEventForm({ name: '', importance: 3, type: 'neutral', goal: 'N/A' });
+  };
+
   const handleUpdateName = async () => {
     if (!editableName.trim()) {
       toast.error('Name cannot be empty');
@@ -362,9 +367,14 @@ export default function UserProfile() {
                   </SelectContent>
                 </Select>
               </div>
-              <Button onClick={handleAddEvent} className="w-full">
-                Create Event
-              </Button>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={handleCancelAddEvent} className="flex-1">
+                  Cancel
+                </Button>
+                <Button onClick={handleAddEvent} className="flex-1">
+                  Create Event
+                </Button>
+              </div>
             </div>
           )}
 
