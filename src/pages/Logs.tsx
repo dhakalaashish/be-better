@@ -202,7 +202,18 @@ export default function Logs() {
                         View History ({event.logCount})
                       </Button>
                     ) : (
-                      <p className="text-sm text-muted-foreground mt-2">No logs yet.</p>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          fetchEventLogs(event);
+                          setShowAddLogForm(true); // Automatically open add log form
+                        }}
+                        className="mt-2"
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Add Log
+                      </Button>
                     )}
                   </CardContent>
                 </Card>
@@ -305,7 +316,7 @@ export default function Logs() {
 
               {logs.length === 0 ? (
                 <p className="text-muted-foreground text-center py-4">
-                  No logs yet. Add one above!
+                  Add log to start tracking!
                 </p>
               ) : (
                 <div className="space-y-3">
